@@ -1,0 +1,288 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg: #0b0e14;
+  --bg2: #121722;
+  --panel: #171e2b;
+  --border: #242e40;
+  --text: #e8edf6;
+  --muted: #8a96ad;
+  --accent: #b48cff;
+  --green: #34d399;
+  --red: #f87171;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: radial-gradient(1200px 600px at 70% -10%, #1c1433 0%, var(--bg) 55%);
+  color: var(--text);
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+.app {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 16px 140px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.header h1 {
+  font-size: 26px;
+  letter-spacing: 0.5px;
+}
+
+.header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.auth {
+  display: flex;
+  align-items: center;
+}
+
+.auth-btn {
+  color: #0b0e14;
+  background: var(--green);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.auth-hint {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.load-row {
+  display: flex;
+  gap: 10px;
+}
+
+.load-row textarea {
+  flex: 1;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+  outline: none;
+}
+
+.load-row textarea:focus {
+  border-color: var(--accent);
+}
+
+.load-row button {
+  background: var(--accent);
+  color: #0b0e14;
+  border: none;
+  padding: 12px 22px;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.load-row button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.error {
+  margin-top: 10px;
+  color: var(--red);
+  font-size: 13px;
+}
+
+.playlist-name {
+  margin-top: 10px;
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.empty {
+  color: var(--muted);
+  text-align: center;
+  padding: 40px 0;
+}
+
+.track-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.track {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.track:hover {
+  border-color: var(--accent);
+}
+
+.track.current {
+  border-color: var(--green);
+  background: #12201c;
+}
+
+.track.failed {
+  opacity: 0.55;
+}
+
+.track .index {
+  width: 30px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.track.current .index {
+  color: var(--green);
+}
+
+.track .meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.track .title {
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.track .artist {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.track .duration {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.badge {
+  color: var(--muted);
+  width: 18px;
+  text-align: center;
+}
+
+.st-ready {
+  color: var(--green);
+}
+
+.st-search {
+  color: var(--accent);
+}
+
+.st-error {
+  color: var(--red);
+}
+
+.error-badge {
+  color: var(--red);
+  font-size: 11px;
+  width: auto;
+}
+
+.player {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(11, 14, 20, 0.92);
+  backdrop-filter: blur(8px);
+  border-top: 1px solid var(--border);
+  padding: 12px 16px 16px;
+}
+
+.player-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  max-width: 720px;
+  margin: 0 auto 8px;
+}
+
+.ctl {
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 18px;
+  cursor: pointer;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+}
+
+.ctl:hover {
+  background: var(--bg2);
+}
+
+.ctl:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.ctl.play {
+  font-size: 24px;
+}
+
+.now-playing {
+  flex: 1;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.seek {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 720px;
+  margin: 0 auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.seek input {
+  flex: 1;
+  accent-color: var(--accent);
+}
