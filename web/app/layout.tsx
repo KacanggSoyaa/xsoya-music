@@ -1,5 +1,6 @@
 import "./globals.css";
 import AutoHost from "./auto-host";
+import Starfield from "./starfield";
 
 export const metadata = {
   title: "xSoya Music",
@@ -15,6 +16,7 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <AutoHost />
+        <Starfield />
         {children}
       </body>
     </html>

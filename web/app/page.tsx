@@ -185,6 +185,64 @@ export default function Home() {
     }
   }, [videoId, currentTrack]);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement;
+      if (
+        el.tagName === "TEXTAREA" ||
+        el.tagName === "INPUT" ||
+        el.isContentEditable
+      )
+        return;
+      const audio = audioRef.current;
+      const toggle = () => {
+        if (!audio) return;
+        if (audio.paused) void audio.play();
+        else audio.pause();
+      };
+      switch (e.key) {
+        case " ":
+        case "MediaPlayPause":
+          e.preventDefault();
+          toggle();
+          break;
+        case "ArrowUp":
+        case "MediaTrackNext":
+          e.preventDefault();
+          step(1);
+          break;
+        case "ArrowDown":
+        case "MediaTrackPrevious":
+          e.preventDefault();
+          step(-1);
+          break;
+        case "ArrowRight":
+          if (e.ctrlKey) {
+            e.preventDefault();
+            step(1);
+          } else if (audio && audio.duration) {
+            e.preventDefault();
+            audio.currentTime = Math.min(
+              audio.duration,
+              audio.currentTime + 10
+            );
+          }
+          break;
+        case "ArrowLeft":
+          if (e.ctrlKey) {
+            e.preventDefault();
+            step(-1);
+          } else if (audio && audio.duration) {
+            e.preventDefault();
+            audio.currentTime = Math.max(0, audio.currentTime - 10);
+          }
+          break;
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [step]);
+
   return (
     <main className="app">
       <header className="header">
@@ -240,7 +298,15 @@ export default function Home() {
             onClick={() => playIndex(t.index)}
           >
             <span className="index">
-              {current === t.index ? "▶" : String(t.index + 1).padStart(2, "0")}
+              {current === t.index ? (
+                <span className={`eq${playing ? "" : " paused"}`}>
+                  <i />
+                  <i />
+                  <i />
+                </span>
+              ) : (
+                String(t.index + 1).padStart(2, "0")
+              )}
             </span>
             <div className="meta">
               <div className="title">{t.title}</div>
@@ -277,11 +343,15 @@ export default function Home() {
           onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
         />
         <div className="player-controls">
+          <div
+            className={`disc${playing ? " spin" : ""}${currentTrack ? "" : " idle"}`}
+            title={currentTrack ? `${currentTrack.title} — ${currentTrack.artist}` : "Nothing playing"}
+          />
           <button
             onClick={() => step(-1)}
             disabled={current <= 0}
             className="ctl"
-            title="Previous"
+            title="Previous (Ctrl+← / ↓)"
           >
             ⏮
           </button>
@@ -289,7 +359,7 @@ export default function Home() {
             onClick={() => playIndex(current)}
             disabled={!videoId}
             className="ctl play"
-            title={playing ? "Pause" : "Play"}
+            title={playing ? "Pause (Space)" : "Play (Space)"}
           >
             {playing ? "⏸" : "▶"}
           </button>
@@ -297,7 +367,7 @@ export default function Home() {
             onClick={() => step(1)}
             disabled={current < 0 || current >= tracks.length - 1}
             className="ctl"
-            title="Next"
+            title="Next (Ctrl+→ / ↑)"
           >
             ⏭
           </button>
@@ -319,12 +389,16 @@ export default function Home() {
           </div>
         </div>
         <div className="seek">
-          <span>{fmt(progress * 10)}</span>
+          <span>{fmt((progress / 100) * duration * 1000)}</span>
           <input
             type="range"
             min={0}
             max={1000}
             value={Math.round(progress * 10)}
+            className="seekbar"
+            style={{
+              background: `linear-gradient(to right, var(--accent) ${progress}%, var(--border) ${progress}%)`,
+            }}
             onChange={(e) => {
               const audio = audioRef.current;
               if (audio && duration) {
@@ -332,9 +406,13 @@ export default function Home() {
               }
             }}
             disabled={!videoId}
+            title="Seek (←/→ ±10s)"
           />
           <span>{fmt(duration * 1000)}</span>
         </div>
+        <p className="keys-hint">
+          Space: play/pause · ←/→: seek ±10s · Ctrl+←/→ : prev/next track
+        </p>
       </footer>
     </main>
   );
