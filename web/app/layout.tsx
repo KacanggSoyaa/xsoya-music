@@ -1,6 +1,14 @@
+import { Space_Grotesk } from "next/font/google";
 import "./globals.css";
 import AutoHost from "./auto-host";
 import Starfield from "./starfield";
+
+const space = Space_Grotesk({
+  subsets: ["latin"],
+  variable: "--font-space",
+  display: "swap",
+  weight: ["400", "500", "600", "700"],
+});
 
 export const metadata = {
   title: "xSoya Music",
@@ -14,7 +22,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>
+      <body className={space.variable}>
         <AutoHost />
         <Starfield />
         {children}

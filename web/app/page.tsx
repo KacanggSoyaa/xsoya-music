@@ -63,7 +63,7 @@ const statusGlyph: Record<TrackStatus, string> = {
   error: "!",
 };
 
-const PRESETS: Preset[] = [
+const DEFAULT_VIBES: Preset[] = [
   {
     name: "Lo-fi Chill",
     tracks: [
@@ -105,6 +105,19 @@ const PRESETS: Preset[] = [
   },
 ];
 
+function loadVibes(): Preset[] {
+  try {
+    const raw = localStorage.getItem("xs_music_vibes");
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length) return parsed as Preset[];
+    }
+  } catch {
+    /* ignore */
+  }
+  return DEFAULT_VIBES;
+}
+
 export default function Home() {
   const [url, setUrl] = useState("");
   const [query, setQuery] = useState("");
@@ -118,6 +131,11 @@ export default function Home() {
     configured: boolean;
   } | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [vibes, setVibes] = useState<Preset[]>([]);
+  const [vibeEditorOpen, setVibeEditorOpen] = useState(false);
+  const [vibeName, setVibeName] = useState("");
+  const [vibeTracks, setVibeTracks] = useState("");
+  const [editVibeKey, setEditVibeKey] = useState<number | null>(null);
 
   const [current, setCurrent] = useState(-1);
   const [playing, setPlaying] = useState(false);
@@ -158,6 +176,7 @@ export default function Home() {
         sessionRef.current = total;
         setSessionSeconds(total);
       }
+      setVibes(loadVibes());
     } catch {
       /* ignore */
     }
@@ -277,6 +296,63 @@ export default function Home() {
       applyTracks(preset.name, preset.tracks.map(parseLine));
     },
     [applyTracks, loading]
+  );
+
+  const saveVibes = useCallback((list: Preset[]) => {
+    setVibes(list);
+    try {
+      localStorage.setItem("xs_music_vibes", JSON.stringify(list));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const startAddVibe = useCallback(() => {
+    setEditVibeKey(null);
+    setVibeName("");
+    setVibeTracks("");
+    setVibeEditorOpen(true);
+  }, []);
+
+  const startEditVibe = useCallback((index: number) => {
+    const p = vibes[index];
+    if (!p) return;
+    setEditVibeKey(index);
+    setVibeName(p.name);
+    setVibeTracks(p.tracks.join("\n"));
+    setVibeEditorOpen(true);
+  }, [vibes]);
+
+  const saveVibe = useCallback(() => {
+    const name = vibeName.trim();
+    const tracks = vibeTracks
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (!name || tracks.length === 0) return;
+    if (editVibeKey !== null) {
+      saveVibes(
+        vibes.map((p, i) => (i === editVibeKey ? { name, tracks } : p))
+      );
+    } else {
+      saveVibes([...vibes, { name, tracks }]);
+    }
+    setEditVibeKey(null);
+    setVibeName("");
+    setVibeTracks("");
+    setVibeEditorOpen(false);
+  }, [vibeName, vibeTracks, editVibeKey, vibes, saveVibes]);
+
+  const removeVibe = useCallback(
+    (index: number) => {
+      saveVibes(vibes.filter((_, i) => i !== index));
+      if (editVibeKey === index) {
+        setEditVibeKey(null);
+        setVibeName("");
+        setVibeTracks("");
+      }
+    },
+    [vibes, saveVibes, editVibeKey]
   );
 
   const loadHistoryEntry = useCallback(
@@ -419,7 +495,10 @@ export default function Home() {
   const currentSource = videoId ? `/api/stream/${videoId}` : undefined;
 
   return (
-    <main className="app">
+    <main className="app" id="main">
+      <a className="skip-link" href="#main">
+        Skip to content
+      </a>
       <header className="header">
         <div className="header-top">
           <h1>🎧 xSoya Music</h1>
@@ -472,7 +551,7 @@ export default function Home() {
 
         <div className="presets">
           <span className="section-label">Vibes</span>
-          {PRESETS.map((p) => (
+          {vibes.map((p) => (
             <button
               key={p.name}
               className="preset"
@@ -482,7 +561,78 @@ export default function Home() {
               {p.name}
             </button>
           ))}
+          <button
+            className="preset preset-edit"
+            onClick={() => setVibeEditorOpen(true)}
+          >
+            ⚙ Edit vibes
+          </button>
         </div>
+
+        {vibeEditorOpen && (
+          <div className="vibe-editor">
+            <div className="vibe-editor-head">
+              <span className="section-label">
+                {editVibeKey !== null ? "Edit vibe" : "Add a vibe"}
+              </span>
+              <button
+                className="vibe-close"
+                onClick={() => setVibeEditorOpen(false)}
+                title="Close editor"
+              >
+                ✕
+              </button>
+            </div>
+            <input
+              className="vibe-name"
+              value={vibeName}
+              onChange={(e) => setVibeName(e.target.value)}
+              placeholder="Vibe name…"
+            />
+            <textarea
+              className="vibe-tracks"
+              value={vibeTracks}
+              onChange={(e) => setVibeTracks(e.target.value)}
+              rows={3}
+              placeholder={"One track per line:\nArtist - Title"}
+            />
+            <div className="vibe-actions">
+              <button
+                className="preset"
+                onClick={saveVibe}
+                disabled={!vibeName.trim() || !vibeTracks.trim()}
+              >
+                {editVibeKey !== null ? "Save changes" : "Add vibe"}
+              </button>
+              <span className="vibe-hint">Saved in this browser</span>
+            </div>
+            {vibes.length > 0 && (
+              <div className="vibe-list">
+                {vibes.map((p, i) => (
+                  <div className="vibe-row" key={i}>
+                    <div className="vibe-info">
+                      <span className="vibe-row-name">{p.name}</span>
+                      <span className="vibe-row-meta">
+                        {p.tracks.length} tracks
+                      </span>
+                    </div>
+                    <div className="vibe-row-actions">
+                      <button className="vibe-btn" onClick={() => startEditVibe(i)}>
+                        Edit
+                      </button>
+                      <button
+                        className="vibe-btn vibe-del"
+                        onClick={() => removeVibe(i)}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {error && <p className="error">{error}</p>}
         {playlistName && <p className="playlist-name">{playlistName}</p>}
@@ -543,7 +693,32 @@ export default function Home() {
         {tracks.length === 0 && (
           <div className="empty empty-visual">
             {loading ? (
-              <p>Loading…</p>
+              <>
+                <div className="skeleton">
+                  <span className="s-num" />
+                  <span className="s-body">
+                    <span className="s-title" />
+                    <span className="s-sub" />
+                  </span>
+                  <span className="s-dur" />
+                </div>
+                <div className="skeleton" style={{ animationDelay: "0.15s" }}>
+                  <span className="s-num" />
+                  <span className="s-body">
+                    <span className="s-title" />
+                    <span className="s-sub" />
+                  </span>
+                  <span className="s-dur" />
+                </div>
+                <div className="skeleton" style={{ animationDelay: "0.3s" }}>
+                  <span className="s-num" />
+                  <span className="s-body">
+                    <span className="s-title" />
+                    <span className="s-sub" />
+                  </span>
+                  <span className="s-dur" />
+                </div>
+              </>
             ) : (
               <>
                 <div className="disc-empty">
@@ -576,6 +751,7 @@ export default function Home() {
               current === t.index ? "current" : "",
               t.status === "error" ? "failed" : "",
             ].join(" ")}
+            style={{ animationDelay: `${Math.min(t.index, 12) * 40}ms` }}
             onClick={() => playIndex(t.index)}
           >
             <span className="index">
