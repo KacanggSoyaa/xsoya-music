@@ -377,6 +377,10 @@
 		const target = current + delta;
 		if (target >= 0 && target < tracks.length) {
 			playIndex(target);
+			return;
+		}
+		if (delta > 0 && queue.length > 0) {
+			playNextQueued();
 		}
 	}
 
@@ -976,7 +980,7 @@
 			</button>
 			<button
 				onclick={() => step(1)}
-				disabled={current < 0 || current >= tracks.length - 1}
+				disabled={current < 0 || (current >= tracks.length - 1 && queue.length === 0)}
 				class="ctl"
 				title="Next (Ctrl+→ / ↑)"
 			>
