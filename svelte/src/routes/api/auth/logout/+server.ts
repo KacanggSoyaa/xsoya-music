@@ -1,6 +1,6 @@
 import type { RequestEvent } from '@sveltejs/kit';
 
-import { SESSION_COOKIE } from '$lib/spotify.js';
+import { SESSION_COOKIE } from '$lib/server/spotify.js';
 
 export async function GET(event: RequestEvent) {
 	event.cookies.delete(SESSION_COOKIE, { path: '/' });

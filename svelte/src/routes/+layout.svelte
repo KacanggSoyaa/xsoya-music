@@ -1,11 +1,11 @@
 <script lang="ts">
-	import '../lib/global.css';
+	import '../lib/styles/global.css';
 	import '@fontsource/space-grotesk/400.css';
 	import '@fontsource/space-grotesk/500.css';
 	import '@fontsource/space-grotesk/600.css';
 	import '@fontsource/space-grotesk/700.css';
-	import AutoHost from '$lib/AutoHost.svelte';
-	import Starfield from '$lib/Starfield.svelte';
+	import AutoHost from '$lib/components/AutoHost.svelte';
+	import Starfield from '$lib/components/Starfield.svelte';
 	import favicon from '$lib/assets/favicon.svg';
 
 	let { children } = $props();

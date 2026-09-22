@@ -1,6 +1,6 @@
 import { json, type RequestEvent } from '@sveltejs/kit';
 
-import { isConfigured, readSession } from '$lib/spotify.js';
+import { isConfigured, readSession } from '$lib/server/spotify.js';
 
 export async function GET(event: RequestEvent) {
 	const session = readSession(event);

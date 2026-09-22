@@ -7,7 +7,7 @@ import {
 	getClientToken,
 	readSession,
 	refreshSession
-} from '$lib/spotify.js';
+} from '$lib/server/spotify.js';
 
 export type PlaylistTrack = {
 	title: string;

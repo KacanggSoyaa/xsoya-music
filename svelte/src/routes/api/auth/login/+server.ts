@@ -1,6 +1,6 @@
 import type { RequestEvent } from '@sveltejs/kit';
 
-import { STATE_COOKIE, buildAuthUrl, isConfigured } from '$lib/spotify.js';
+import { STATE_COOKIE, buildAuthUrl, isConfigured } from '$lib/server/spotify.js';
 
 export async function GET(event: RequestEvent) {
 	if (!isConfigured()) {

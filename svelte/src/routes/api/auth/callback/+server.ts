@@ -7,7 +7,7 @@ import {
 	exchangeCode,
 	isConfigured,
 	redirectUri
-} from '$lib/spotify.js';
+} from '$lib/server/spotify.js';
 
 function redirect(event: RequestEvent, location: string): Response {
 	return new Response(null, { status: 302, headers: { location } });
