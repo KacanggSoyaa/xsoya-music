@@ -39,6 +39,8 @@
 	let progress = $state(0);
 	let duration = $state(0);
 	let sessionSeconds = $state(0);
+	let queue = $state<Track[]>([]);
+	let queueSeq = 0;
 
 	let audioEl: HTMLAudioElement;
 	let lastTime = -1;
@@ -158,6 +160,83 @@
 			}
 		});
 		await Promise.all(workers);
+	}
+
+	function enqueueTrack(entry: { title: string; artist: string; videoId?: string }) {
+		const qid = queueSeq++;
+		const track: Track = {
+			index: -1,
+			qid,
+			title: entry.title,
+			artist: entry.artist,
+			duration_ms: 0,
+			videoId: entry.videoId,
+			status: entry.videoId ? 'ready' : 'pending'
+		};
+		queue = [...queue, track];
+		if (!entry.videoId) void resolveQueueTrack(qid, `${entry.title} ${entry.artist}`.trim());
+	}
+
+	async function resolveQueueTrack(qid: number, q: string) {
+		queue = queue.map((t) => (t.qid === qid ? { ...t, status: 'searching' as TrackStatus } : t));
+		try {
+			const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+			const data = (await res.json()) as SearchResult & { error?: string };
+			if (!res.ok) throw new Error(data.error || 'search failed');
+			queue = queue.map((t) =>
+				t.qid === qid ? { ...t, videoId: data.videoId, status: 'ready' as TrackStatus } : t
+			);
+		} catch (err) {
+			queue = queue.map((t) =>
+				t.qid === qid
+					? { ...t, status: 'error' as TrackStatus, error: (err as Error).message }
+					: t
+			);
+		}
+	}
+
+	function playNextQueued() {
+		const next = queue[0];
+		if (!next) return;
+		queue = queue.slice(1);
+		const index = tracks.length;
+		const track: Track = { ...next, index, status: next.videoId ? 'ready' : 'pending' };
+		tracks = [...tracks, track];
+		current = index;
+		playing = true;
+		if (!track.videoId) void resolveTrack(index, `${track.title} ${track.artist}`.trim());
+	}
+
+	function removeFromQueue(qid: number) {
+		queue = queue.filter((t) => t.qid !== qid);
+	}
+
+	function moveQueue(index: number, dir: number) {
+		const j = index + dir;
+		if (index < 0 || j < 0 || j >= queue.length) return;
+		const next = [...queue];
+		[next[index], next[j]] = [next[j], next[index]];
+		queue = next;
+	}
+
+	function searchAndQueue(q: string) {
+		return (async () => {
+			const term = q.trim();
+			if (!term || searching) return;
+			searching = true;
+			error = null;
+			try {
+				const res = await fetch(`/api/search?q=${encodeURIComponent(term)}`);
+				const data = (await res.json()) as SearchResult & { error?: string };
+				if (!res.ok) throw new Error(data.error || 'search failed');
+				enqueueTrack({ title: data.title ?? term, artist: data.channel ?? '', videoId: data.videoId });
+				query = '';
+			} catch (err) {
+				error = (err as Error).message;
+			} finally {
+				searching = false;
+			}
+		})();
 	}
 
 	function persistHistory(list: HistoryEntry[]) {
@@ -463,6 +542,13 @@
 									<div class="song-actions">
 										<button
 											class="song-act"
+											title="Add to queue"
+											onclick={() => enqueueTrack(s)}
+										>
+											Queue
+										</button>
+										<button
+											class="song-act"
 											class:pinned={s.pinned}
 											title={s.pinned ? 'Unpin' : 'Pin to top'}
 											onclick={() => togglePin(i)}
@@ -525,6 +611,14 @@
 				disabled={searching || !query.trim()}
 			>
 				{searching ? 'Searching…' : 'Play'}
+			</button>
+			<button
+				class="btn-ghost"
+				onclick={() => void searchAndQueue(query)}
+				disabled={searching || !query.trim()}
+				title="Add search result to queue"
+			>
+				+ Queue
 			</button>
 		</div>
 
@@ -692,6 +786,45 @@
 		{/each}
 		</section>
 	{/if}
+
+	{#if queue.length > 0}
+		<section class="queue-list">
+			<div class="queue-head">
+				<span class="section-label">Up Next · {queue.length}</span>
+				<button class="queue-clear" onclick={() => (queue = [])}>
+					Clear
+				</button>
+			</div>
+			{#each queue as q, qi}
+				<div class={'queue-track' + (q.status === 'error' ? ' failed' : '')}>
+					<span class="index">{String(qi + 1).padStart(2, '0')}</span>
+					<div class="meta">
+						<div class="title">{q.title}</div>
+						<div class="artist">{q.artist}</div>
+					</div>
+					{#if q.status === 'error'}
+						<span class="badge error-badge" title={q.error}>! unfound</span>
+					{/if}
+					<div class="queue-actions">
+						<button class="queue-move" onclick={() => moveQueue(qi, -1)} disabled={qi === 0} title="Move up">
+							↑
+						</button>
+						<button
+							class="queue-move"
+							onclick={() => moveQueue(qi, 1)}
+							disabled={qi === queue.length - 1}
+							title="Move down"
+						>
+							↓
+						</button>
+						<button class="queue-x" onclick={() => q.qid !== undefined && removeFromQueue(q.qid)} title="Remove from queue">
+							✕
+						</button>
+					</div>
+				</div>
+			{/each}
+		</section>
+	{/if}
 		</div>
 	</div>
 
@@ -702,7 +835,7 @@
 			autoplay
 			onplay={() => (playing = true)}
 			onpause={() => (playing = false)}
-			onended={() => step(1)}
+			onended={() => (queue.length > 0 ? playNextQueued() : step(1))}
 			ontimeupdate={(e) => {
 				const el = e.currentTarget;
 				progress = (el.currentTime / el.duration) * 100 || 0;

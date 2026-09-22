@@ -15,6 +15,7 @@ export type Track = {
 	videoId?: string;
 	status: TrackStatus;
 	error?: string;
+	qid?: number;
 };
 
 export type HistoryEntry = {
