@@ -328,9 +328,29 @@
 	});
 </script>
 
-<main class="app" id="main">
+<main class="app" id="main" class:wide={tracks.length === 0 && history.length > 0}>
 	<a class="skip-link" href="#main"> Skip to content </a>
 
+	<div class="layout-home" class:active={tracks.length === 0 && history.length > 0}>
+		{#if tracks.length === 0 && history.length > 0}
+			<aside class="home-side">
+				<div class="history">
+					<div class="section-label">Recently played</div>
+					<div class="history-scroll">
+						{#each history as h}
+							<button class="history-card" disabled={loading} onclick={() => loadHistoryEntry(h)}>
+								<span class="history-name">{h.name}</span>
+								<span class="history-meta">
+									{h.tracks.length} tracks · {fmt(h.tracks.reduce((sum, t) => sum + (t.duration_ms || 0), 0))}
+								</span>
+							</button>
+						{/each}
+					</div>
+				</div>
+			</aside>
+		{/if}
+
+		<div class="home-main">
 	<header class="header">
 		<div class="header-top">
 			<h1>🎧 xSoya Music</h1>
@@ -454,24 +474,9 @@
 		</section>
 	{/if}
 
-	{#if tracks.length === 0 && history.length > 0}
-		<div class="history">
-			<div class="section-label">Recently played</div>
-			<div class="history-scroll">
-				{#each history as h}
-					<button class="history-card" disabled={loading} onclick={() => loadHistoryEntry(h)}>
-						<span class="history-name">{h.name}</span>
-						<span class="history-meta">
-							{h.tracks.length} tracks · {fmt(h.tracks.reduce((sum, t) => sum + (t.duration_ms || 0), 0))}
-						</span>
-					</button>
-				{/each}
-			</div>
-		</div>
-	{/if}
-
-	<section class="track-list">
-		{#if tracks.length === 0}
+	{#if tracks.length === 0}
+		<div class="welcome-grid">
+			<section class="track-list">
 			<div class="empty empty-visual">
 				{#if loading}
 					{#each [0, 1, 2] as n}
@@ -502,9 +507,11 @@
 					<p>Paste a Spotify playlist, pick a vibe above, or search any song to start.</p>
 				{/if}
 			</div>
-		{/if}
-
-		{#each tracks as t}
+			</section>
+		</div>
+	{:else}
+		<section class="track-list">
+			{#each tracks as t}
 			<div
 				class={'track' + (current === t.index ? ' current' : '') + (t.status === 'error' ? ' failed' : '')}
 				role="button"
@@ -543,7 +550,10 @@
 				</span>
 			</div>
 		{/each}
-	</section>
+		</section>
+	{/if}
+		</div>
+	</div>
 
 	<footer class="player">
 		<audio
