@@ -26,6 +26,10 @@ const STAR = "255,255,255";
 const NEBULA = "142,100,255";
 const NEBULA2 = "0,160,255";
 const METEOR = "160,220,255";
+const MOON = "226,230,238";
+const MOON_SHADE = "160,168,182";
+const MARS = "226,94,66";
+const MARS_DARK = "156,52,36";
 
 export default function Starfield() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -73,6 +77,66 @@ export default function Starfield() {
       });
     };
 
+    const drawMoon = (x: number, y: number, r: number) => {
+      glow(x, y, r * 2, MOON, 0.07);
+      const g = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.2, x, y, r);
+      g.addColorStop(0, `rgba(245,247,252,1)`);
+      g.addColorStop(0.7, `rgba(${MOON},1)`);
+      g.addColorStop(1, `rgba(${MOON_SHADE},1)`);
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+
+      const craters = [
+        { dx: -0.28, dy: -0.18, r: 0.13 },
+        { dx: 0.24, dy: -0.3, r: 0.1 },
+        { dx: 0.34, dy: 0.12, r: 0.17 },
+        { dx: -0.12, dy: 0.32, r: 0.11 },
+        { dx: -0.4, dy: 0.06, r: 0.08 },
+        { dx: 0.05, dy: 0.02, r: 0.06 },
+      ];
+      for (const c of craters) {
+        ctx.fillStyle = `rgba(${MOON_SHADE}, 0.45)`;
+        ctx.beginPath();
+        ctx.arc(x + c.dx * r, y + c.dy * r, c.r * r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = `rgba(200,208,220,0.5)`;
+        ctx.beginPath();
+        ctx.arc(x + c.dx * r - c.r * r * 0.25, y + c.dy * r - c.r * r * 0.25, c.r * r * 0.55, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    };
+
+    const drawMars = (x: number, y: number, r: number) => {
+      glow(x, y, r * 2.2, MARS, 0.08);
+      const g = ctx.createRadialGradient(x - r * 0.35, y - r * 0.35, r * 0.1, x, y, r);
+      g.addColorStop(0, `rgba(255,165,120,1)`);
+      g.addColorStop(0.55, `rgba(${MARS},1)`);
+      g.addColorStop(1, `rgba(${MARS_DARK},1)`);
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "rgba(255,214,190,0.7)";
+      ctx.beginPath();
+      ctx.arc(x - r * 0.42, y - r * 0.48, r * 0.35, 0, Math.PI * 2);
+      ctx.fill();
+
+      const patches = [
+        { dx: 0.2, dy: 0.1, r: 0.3, a: 0.25 },
+        { dx: -0.05, dy: 0.3, r: 0.22, a: 0.2 },
+        { dx: 0.3, dy: -0.28, r: 0.18, a: 0.22 },
+      ];
+      for (const p of patches) {
+        ctx.fillStyle = `rgba(${MARS_DARK}, ${p.a})`;
+        ctx.beginPath();
+        ctx.arc(x + p.dx * r, y + p.dy * r, p.r * r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    };
+
     const spawnMeteor = (): Meteor => ({
       x: Math.random() * w * 0.8 + w * 0.1,
       y: Math.random() * h * 0.4,
@@ -106,6 +170,9 @@ export default function Starfield() {
       const drift = scroll * 0.02;
       glow(w * 0.75, h * 0.72 - drift, Math.min(w, h) * 0.5, NEBULA, 0.05);
       glow(w * 0.2, h * 0.18 - drift, Math.min(w, h) * 0.4, NEBULA2, 0.04);
+
+      drawMoon(w * 0.82, h * 0.16 - drift, Math.min(w, h) * 0.06);
+      drawMars(w * 0.12, h * 0.22 - drift, Math.min(w, h) * 0.04);
 
       for (const s of stars) {
         const twinkle = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(s.phase + frame * s.speed));

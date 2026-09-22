@@ -21,12 +21,39 @@ type Track = {
   error?: string;
 };
 
+type HistoryEntry = {
+  name: string;
+  savedAt: number;
+  tracks: { title: string; artist: string; duration_ms: number }[];
+};
+
+type Preset = { name: string; tracks: string[] };
+
 function fmt(ms: number): string {
   if (!ms || ms <= 0) return "0:00";
   const total = Math.floor(ms / 1000);
   const m = Math.floor(total / 60);
   const s = total % 60;
   return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function fmtTotal(sec: number): string {
+  if (!isFinite(sec) || sec <= 0) return "0:00";
+  const total = Math.floor(sec);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const mm = h > 0 ? String(m).padStart(2, "0") : String(m);
+  const ss = String(s).padStart(2, "0");
+  return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
+}
+
+function parseLine(line: string) {
+  const parts = line.split(/\s+[-–—]\s+|\t+/);
+  if (parts.length >= 2) {
+    return { title: parts[0].trim(), artist: parts.slice(1).join(" ").trim(), duration_ms: 0 };
+  }
+  return { title: line.trim(), artist: "", duration_ms: 0 };
 }
 
 const statusGlyph: Record<TrackStatus, string> = {
@@ -36,23 +63,71 @@ const statusGlyph: Record<TrackStatus, string> = {
   error: "!",
 };
 
+const PRESETS: Preset[] = [
+  {
+    name: "Lo-fi Chill",
+    tracks: [
+      "Dreams - Joji",
+      "Come and Get Your Love - Redbone",
+      "Cigarette Daydreams - Cage the Elephant",
+      "Lost in Japan - Shawn Mendes",
+      "After Dark - Mr.Kitty",
+      "Sunset Lover - Petit Biscuit",
+      "Electric Feel - MGMT",
+      "Chamber of Reflection - Mac DeMarco",
+    ],
+  },
+  {
+    name: "Workout",
+    tracks: [
+      "Till I Collapse - Eminem",
+      "Stronger - Kanye West",
+      "Eye of the Tiger - Survivor",
+      "Lose Yourself - Eminem",
+      "The Search - NF",
+      "Power - Kanye West",
+      "Remember the Name - Fort Minor",
+      "Uptown Funk - Mark Ronson",
+    ],
+  },
+  {
+    name: "Deep Focus",
+    tracks: [
+      "Clair de Lune - Claude Debussy",
+      "River Flows in You - Yiruma",
+      "Experience - Ludovico Einaudi",
+      "Weightless - Marconi Union",
+      "Moonlight Sonata - Beethoven",
+      "Nuvole Bianche - Ludovico Einaudi",
+      "Comptine d'un autre été - Yann Tiersen",
+      "Gymnopédie No. 1 - Erik Satie",
+    ],
+  },
+];
+
 export default function Home() {
   const [url, setUrl] = useState("");
+  const [query, setQuery] = useState("");
   const [playlistName, setPlaylistName] = useState<string | null>(null);
   const [tracks, setTracks] = useState<Track[]>([]);
   const [loading, setLoading] = useState(false);
+  const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [auth, setAuth] = useState<{
     loggedIn: boolean;
     configured: boolean;
   } | null>(null);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
 
   const [current, setCurrent] = useState(-1);
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [sessionSeconds, setSessionSeconds] = useState(0);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const lastTimeRef = useRef(-1);
+  const sessionRef = useRef(0);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -71,6 +146,21 @@ export default function Home() {
       .then((r) => r.json())
       .then(setAuth)
       .catch(() => setAuth(null));
+
+    try {
+      const raw = localStorage.getItem("xs_music_history");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) setHistory(parsed.slice(0, 5));
+      }
+      const total = Number(localStorage.getItem("xs_music_total") || 0);
+      if (total > 0) {
+        sessionRef.current = total;
+        setSessionSeconds(total);
+      }
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   const resolveTrack = useCallback(async (index: number, q: string) => {
@@ -110,7 +200,7 @@ export default function Home() {
         while (next < list.length) {
           const i = next++;
           const t = list[i];
-          await resolveTrack(t.index, `${t.title} ${t.artist}`);
+          await resolveTrack(t.index, `${t.title} ${t.artist}`.trim());
         }
       });
       await Promise.all(workers);
@@ -118,35 +208,116 @@ export default function Home() {
     [resolveTrack]
   );
 
+  const saveHistory = useCallback(
+    (name: string, list: { title: string; artist: string; duration_ms: number }[]) => {
+      const entry: HistoryEntry = {
+        name,
+        savedAt: Date.now(),
+        tracks: list.map((t) => ({
+          title: t.title,
+          artist: t.artist,
+          duration_ms: t.duration_ms,
+        })),
+      };
+      setHistory((prev) => {
+        const next = [entry, ...prev.filter((p) => p.name !== name)].slice(0, 5);
+        try {
+          localStorage.setItem("xs_music_history", JSON.stringify(next));
+        } catch {
+          /* ignore */
+        }
+        return next;
+      });
+    },
+    []
+  );
+
+  const applyTracks = useCallback(
+    (
+      name: string,
+      list: { title: string; artist: string; duration_ms: number }[]
+    ) => {
+      setError(null);
+      setPlaylistName(name);
+      setCurrent(-1);
+      setPlaying(false);
+      const built: Track[] = list.map((t, i) => ({
+        index: i,
+        title: t.title,
+        artist: t.artist,
+        duration_ms: t.duration_ms || 0,
+        status: "pending" as TrackStatus,
+      }));
+      setTracks(built);
+      saveHistory(name, list);
+      void preload(built);
+    },
+    [preload, saveHistory]
+  );
+
   const loadPlaylist = useCallback(async () => {
+    if (loading) return;
     setError(null);
     setLoading(true);
-    setCurrent(-1);
-    setPlaying(false);
-    setPlaylistName(null);
-    setTracks([]);
     try {
       const res = await fetch(`/api/playlist?url=${encodeURIComponent(url)}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "load failed");
-      setPlaylistName(data.name);
-      const list: Track[] = data.tracks.map(
-        (t: { title: string; artist: string; duration_ms: number }, i: number) => ({
-          index: i,
-          title: t.title,
-          artist: t.artist,
-          duration_ms: t.duration_ms,
-          status: "pending",
-        })
-      );
-      setTracks(list);
-      void preload(list);
+      applyTracks(data.name, data.tracks);
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setLoading(false);
     }
-  }, [url, preload]);
+  }, [url, loading, applyTracks]);
+
+  const loadPreset = useCallback(
+    (preset: Preset) => {
+      if (loading) return;
+      applyTracks(preset.name, preset.tracks.map(parseLine));
+    },
+    [applyTracks, loading]
+  );
+
+  const loadHistoryEntry = useCallback(
+    (entry: HistoryEntry) => {
+      if (loading) return;
+      applyTracks(entry.name, entry.tracks);
+    },
+    [applyTracks, loading]
+  );
+
+  const searchAndPlay = useCallback(
+    async (q: string) => {
+      const term = q.trim();
+      if (!term || searching) return;
+      setSearching(true);
+      setError(null);
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(term)}`);
+        const data = (await res.json()) as SearchResult & { error?: string };
+        if (!res.ok) throw new Error(data.error || "search failed");
+        const track: Track = {
+          index: 0,
+          title: data.title ?? term,
+          artist: data.channel ?? "",
+          duration_ms: (data.duration ?? 0) * 1000,
+          videoId: data.videoId,
+          status: "ready",
+        };
+        setPlaylistName(`Search: ${term}`);
+        setTracks([track]);
+        setCurrent(0);
+        setPlaying(true);
+        setQuery("");
+      } catch (err) {
+        setError((err as Error).message);
+      } finally {
+        setSearching(false);
+      }
+    },
+    [searching]
+  );
 
   const playIndex = useCallback(
     (index: number) => {
@@ -182,6 +353,7 @@ export default function Home() {
     if (videoId && currentTrack) {
       setProgress(0);
       setDuration(0);
+      lastTimeRef.current = -1;
     }
   }, [videoId, currentTrack]);
 
@@ -243,6 +415,9 @@ export default function Home() {
     return () => window.removeEventListener("keydown", onKey);
   }, [step]);
 
+  const totalDurationMs = tracks.reduce((sum, t) => sum + (t.duration_ms || 0), 0);
+  const currentSource = videoId ? `/api/stream/${videoId}` : undefined;
+
   return (
     <main className="app">
       <header className="header">
@@ -262,6 +437,7 @@ export default function Home() {
             )}
           </div>
         </div>
+
         <div className="load-row">
           <textarea
             value={url}
@@ -271,21 +447,126 @@ export default function Home() {
               "Paste a Spotify playlist link…\n…or a multi-line track list (Artist - Title per line)"
             }
           />
-          <button onClick={loadPlaylist} disabled={loading || !url.trim()}>
+          <button className="btn-primary" onClick={loadPlaylist} disabled={loading || !url.trim()}>
             {loading ? "Loading…" : "Load"}
           </button>
         </div>
+
+        <div className="search-row">
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void searchAndPlay(query);
+            }}
+            placeholder="Search any song and play it instantly…"
+          />
+          <button
+            className="btn-primary"
+            onClick={() => void searchAndPlay(query)}
+            disabled={searching || !query.trim()}
+          >
+            {searching ? "Searching…" : "Play"}
+          </button>
+        </div>
+
+        <div className="presets">
+          <span className="section-label">Vibes</span>
+          {PRESETS.map((p) => (
+            <button
+              key={p.name}
+              className="preset"
+              disabled={loading}
+              onClick={() => loadPreset(p)}
+            >
+              {p.name}
+            </button>
+          ))}
+        </div>
+
         {error && <p className="error">{error}</p>}
         {playlistName && <p className="playlist-name">{playlistName}</p>}
       </header>
 
+      {tracks.length > 0 && (
+        <div className="stats">
+          <span>
+            <b>{tracks.length}</b> tracks
+          </span>
+          <span>
+            <b>{fmtTotal(totalDurationMs / 1000)}</b> total
+          </span>
+          <span className="stats-accent">
+            Listened <b>{fmtTotal(sessionSeconds)}</b> total
+          </span>
+        </div>
+      )}
+
+      {currentTrack && (
+        <section className="hero">
+          <div className={`disc${playing ? " spin" : ""}`}>
+            <span className="hero-initial">
+              {(currentTrack.title || "?").charAt(0).toUpperCase()}
+            </span>
+          </div>
+          <div className="hero-meta">
+            <span className="hero-kicker">{playlistName ?? "Now playing"}</span>
+            <div className="hero-title">{currentTrack.title}</div>
+            <div className="hero-artist">{currentTrack.artist || "Unknown artist"}</div>
+          </div>
+        </section>
+      )}
+
+      {tracks.length === 0 && history.length > 0 && (
+        <div className="history">
+          <div className="section-label">Recently played</div>
+          <div className="history-scroll">
+            {history.map((h) => (
+              <button
+                key={h.savedAt}
+                className="history-card"
+                disabled={loading}
+                onClick={() => loadHistoryEntry(h)}
+              >
+                <span className="history-name">{h.name}</span>
+                <span className="history-meta">
+                  {h.tracks.length} tracks ·{" "}
+                  {fmt(h.tracks.reduce((sum, t) => sum + (t.duration_ms || 0), 0))}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <section className="track-list">
         {tracks.length === 0 && (
-          <p className="empty">
-            {loading
-              ? "Loading…"
-              : "Paste a Spotify playlist link above to start listening for free 😄"}
-          </p>
+          <div className="empty empty-visual">
+            {loading ? (
+              <p>Loading…</p>
+            ) : (
+              <>
+                <div className="disc-empty">
+                  <svg width="130" height="130" viewBox="0 0 130 130" fill="none" aria-hidden="true">
+                    <circle cx="65" cy="65" r="60" fill="#0d1118" stroke="#242e40" strokeWidth="2" />
+                    <circle cx="65" cy="65" r="58" fill="none" stroke="#1a2030" strokeWidth="1" />
+                    <circle cx="65" cy="65" r="46" fill="#151b28" />
+                    <circle cx="65" cy="65" r="40" fill="none" stroke="#2a3547" strokeWidth="2" strokeDasharray="2 5" />
+                    <circle cx="65" cy="65" r="34" fill="none" stroke="#2a3547" strokeWidth="2" strokeDasharray="2 5" />
+                    <circle cx="65" cy="65" r="28" fill="none" stroke="#2a3547" strokeWidth="2" strokeDasharray="2 5" />
+                    <circle cx="65" cy="65" r="14" fill="#202738" />
+                    <circle cx="65" cy="65" r="6" fill="#b48cff" />
+                    <circle cx="65" cy="65" r="2.5" fill="#0b0e14" />
+                    <path d="M98 76v10M98 76l-9 4m9-26v10M89 54l9 4" stroke="#b48cff" strokeWidth="2.4" strokeLinecap="round" />
+                  </svg>
+                </div>
+                <p>
+                  Paste a Spotify playlist, pick a vibe above, or search any song to
+                  start.
+                </p>
+              </>
+            )}
+          </div>
         )}
         {tracks.map((t) => (
           <div
@@ -332,15 +613,33 @@ export default function Home() {
       <footer className="player">
         <audio
           ref={audioRef}
-          src={videoId ? `/api/stream/${videoId}` : undefined}
+          src={currentSource}
           autoPlay
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}
           onEnded={() => step(1)}
-          onTimeUpdate={(e) =>
-            setProgress((e.currentTarget.currentTime / e.currentTarget.duration) * 100 || 0)
-          }
-          onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+          onTimeUpdate={(e) => {
+            const audio = e.currentTarget;
+            setProgress((audio.currentTime / audio.duration) * 100 || 0);
+            const t = audio.currentTime;
+            if (lastTimeRef.current >= 0 && t > lastTimeRef.current) {
+              const delta = t - lastTimeRef.current;
+              if (delta < 10) {
+                sessionRef.current += delta;
+                setSessionSeconds(sessionRef.current);
+                try {
+                  localStorage.setItem("xs_music_total", String(sessionRef.current));
+                } catch {
+                  /* ignore */
+                }
+              }
+            }
+            lastTimeRef.current = t;
+          }}
+          onLoadedMetadata={(e) => {
+            setDuration(e.currentTarget.duration);
+            lastTimeRef.current = 0;
+          }}
         />
         <div className="player-controls">
           <div
