@@ -32,6 +32,7 @@
 	let vibeName = $state('');
 	let vibeTracks = $state('');
 	let editVibeKey = $state<number | null>(null);
+	let confirmDel = $state<{ label: string; fn: () => void } | null>(null);
 
 	let current = $state(-1);
 	let playing = $state(false);
@@ -79,21 +80,35 @@
 	});
 
 	function persistSongs(list: SongEntry[]) {
-		songs = list;
+		const sorted = [...list].sort((a, b) => {
+			if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
+			return b.savedAt - a.savedAt;
+		});
+		songs = sorted;
 		try {
-			localStorage.setItem(SONGS_KEY, JSON.stringify(list));
+			localStorage.setItem(SONGS_KEY, JSON.stringify(sorted));
 		} catch {
 			/* ignore */
 		}
 	}
 
 	function recordSong(entry: SongEntry) {
+		const existing = songs.find((s) => s.title === entry.title && s.artist === entry.artist);
+		const rest = songs.filter((s) => !(s.title === entry.title && s.artist === entry.artist));
 		persistSongs(
 			[
-				{ ...entry, savedAt: Date.now() },
-				...songs.filter((s) => !(s.title === entry.title && s.artist === entry.artist))
-			].slice(0, 5)
+				{ ...entry, savedAt: Date.now(), pinned: existing?.pinned ?? false },
+				...rest
+			].slice(0, 8)
 		);
+	}
+
+	function removeSong(index: number) {
+		persistSongs(songs.filter((_, i) => i !== index));
+	}
+
+	function togglePin(index: number) {
+		persistSongs(songs.map((s, i) => (i === index ? { ...s, pinned: !s.pinned } : s)));
 	}
 
 	function playSong(entry: SongEntry) {
@@ -145,19 +160,38 @@
 		await Promise.all(workers);
 	}
 
-	function saveHistory(name: string, list: { title: string; artist: string; duration_ms: number }[]) {
-		const entry: HistoryEntry = {
-			name,
-			savedAt: Date.now(),
-			tracks: list.map((t) => ({ title: t.title, artist: t.artist, duration_ms: t.duration_ms }))
-		};
-		const next = [entry, ...history.filter((p) => p.name !== name)].slice(0, 5);
-		history = next;
+	function persistHistory(list: HistoryEntry[]) {
+		const sorted = [...list].sort((a, b) => {
+			if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
+			return b.savedAt - a.savedAt;
+		});
+		history = sorted;
 		try {
-			localStorage.setItem('xs_music_history', JSON.stringify(next));
+			localStorage.setItem('xs_music_history', JSON.stringify(sorted));
 		} catch {
 			/* ignore */
 		}
+	}
+
+	function saveHistory(name: string, list: { title: string; artist: string; duration_ms: number }[]) {
+		const existing = history.find((p) => p.name === name);
+		const entry: HistoryEntry = {
+			name,
+			savedAt: Date.now(),
+			pinned: existing?.pinned ?? false,
+			tracks: list.map((t) => ({ title: t.title, artist: t.artist, duration_ms: t.duration_ms }))
+		};
+		persistHistory([entry, ...history.filter((p) => p.name !== name)].slice(0, 8));
+	}
+
+	function removeHistory(name: string) {
+		persistHistory(history.filter((p) => p.name !== name));
+	}
+
+	function togglePinHistory(name: string) {
+		persistHistory(
+			history.map((p) => (p.name === name ? { ...p, pinned: !p.pinned } : p))
+		);
 	}
 
 	async function applyTracks(
@@ -383,25 +417,67 @@
 						<div class="section-label">Vibes</div>
 						<div class="side-scroll">
 							{#each history as h}
-								<button class="history-card" disabled={loading} onclick={() => loadHistoryEntry(h)}>
-									<span class="history-name">{h.name}</span>
-									<span class="history-meta">
-										{h.tracks.length} tracks · {fmt(h.tracks.reduce((sum, t) => sum + (t.duration_ms || 0), 0))}
-									</span>								
-								</button>
+								<div class="history-card">
+									<button
+										class="song-main"
+										disabled={loading}
+										onclick={() => loadHistoryEntry(h)}
+									>
+										<span class="history-name">{h.name}</span>
+										<span class="history-meta">
+											{h.tracks.length} tracks · {fmt(h.tracks.reduce((sum, t) => sum + (t.duration_ms || 0), 0))}
+										</span>
+									</button>
+									<div class="song-actions">
+										<button
+											class="song-act"
+											class:pinned={h.pinned}
+											title={h.pinned ? 'Unpin' : 'Pin to top'}
+											onclick={() => togglePinHistory(h.name)}
+										>
+											{h.pinned ? 'Unpin' : 'Pin'}
+										</button>
+										<button
+											class="song-act song-del"
+											title="Delete"
+											onclick={() => (confirmDel = { label: h.name, fn: () => removeHistory(h.name) })}
+										>
+											Delete
+										</button>
+									</div>
+								</div>
 							{/each}
 						</div>
 					</div>
 				{/if}
 				{#if songs.length > 0}
 					<div class="side-group">
-						<div class="section-label">Songs</div>
+						<div class="section-label">Recent Plays</div>
 						<div class="side-scroll">
-							{#each songs as s}
-								<button class="history-card" onclick={() => playSong(s)}>
-									<span class="history-name">{s.title}</span>
-									<span class="history-meta">{s.artist || 'Unknown artist'}</span>
-								</button>
+							{#each songs as s, i}
+								<div class="history-card">
+									<button class="song-main" onclick={() => playSong(s)}>
+										<span class="history-name">{s.title}</span>
+										<span class="history-meta">{s.artist || 'Unknown artist'}</span>
+									</button>
+									<div class="song-actions">
+										<button
+											class="song-act"
+											class:pinned={s.pinned}
+											title={s.pinned ? 'Unpin' : 'Pin to top'}
+											onclick={() => togglePin(i)}
+										>
+											{s.pinned ? 'Unpin' : 'Pin'}
+										</button>
+										<button
+											class="song-act song-del"
+											title="Delete"
+											onclick={() => (confirmDel = { label: s.title, fn: () => removeSong(i) })}
+										>
+											Delete
+										</button>
+									</div>
+								</div>
 							{/each}
 						</div>
 					</div>
@@ -454,10 +530,15 @@
 
 		<div class="presets">
 			<span class="section-label">Vibes</span>
-			{#each vibes as p}
-				<button class="preset" disabled={loading} onclick={() => loadPreset(p)}>
-					{p.name}
-				</button>
+			{#each vibes as p, i}
+				<div class="preset-wrap">
+					<button class="preset" disabled={loading} onclick={() => loadPreset(p)}>
+						{p.name}
+					</button>
+					<button class="preset-del" onclick={() => removeVibe(i)} title="Remove {p.name}">
+						✕
+					</button>
+				</div>
 			{/each}
 			<button class="preset preset-edit" onclick={() => (vibeEditorOpen = true)}>
 				⚙ Edit vibes
@@ -695,4 +776,24 @@
 		</div>
 		<p class="keys-hint">Space: play/pause · ←/→: seek ±10s · Ctrl+←/→ : prev/next track</p>
 	</footer>
+
+	{#if confirmDel}
+		<div class="toast" role="dialog" aria-live="polite">
+			<p class="toast-text">
+				Delete <b>“{confirmDel.label}”</b>? This can't be undone.
+			</p>
+			<div class="toast-actions">
+				<button class="toast-btn" onclick={() => (confirmDel = null)}>Cancel</button>
+				<button
+					class="toast-btn toast-confirm"
+					onclick={() => {
+						confirmDel?.fn();
+						confirmDel = null;
+					}}
+				>
+					Delete
+				</button>
+			</div>
+		</div>
+	{/if}
 </main>

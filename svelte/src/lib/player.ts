@@ -20,6 +20,7 @@ export type Track = {
 export type HistoryEntry = {
 	name: string;
 	savedAt: number;
+	pinned?: boolean;
 	tracks: { title: string; artist: string; duration_ms: number }[];
 };
 
@@ -30,6 +31,7 @@ export type SongEntry = {
 	artist: string;
 	videoId?: string;
 	savedAt: number;
+	pinned?: boolean;
 };
 
 export const SONGS_KEY = 'xs_music_songs';
