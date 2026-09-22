@@ -6,12 +6,15 @@
 		type TrackStatus,
 		type HistoryEntry,
 		type Preset,
+		type SongEntry,
 		fmt,
 		fmtTotal,
 		parseLine,
 		statusGlyph,
 		DEFAULT_VIBES,
-		loadVibes
+		loadVibes,
+		SONGS_KEY,
+		loadSongs
 	} from '$lib/player.js';
 
 	let url = $state('');
@@ -23,6 +26,7 @@
 	let error = $state<string | null>(null);
 	let auth = $state<{ loggedIn: boolean; configured: boolean } | null>(null);
 	let history = $state<HistoryEntry[]>([]);
+	let songs = $state<SongEntry[]>([]);
 	let vibes = $state<Preset[]>([]);
 	let vibeEditorOpen = $state(false);
 	let vibeName = $state('');
@@ -68,10 +72,48 @@
 				sessionSeconds = total;
 			}
 			vibes = loadVibes();
+			songs = loadSongs();
 		} catch {
 			/* ignore */
 		}
 	});
+
+	function persistSongs(list: SongEntry[]) {
+		songs = list;
+		try {
+			localStorage.setItem(SONGS_KEY, JSON.stringify(list));
+		} catch {
+			/* ignore */
+		}
+	}
+
+	function recordSong(entry: SongEntry) {
+		persistSongs(
+			[
+				{ ...entry, savedAt: Date.now() },
+				...songs.filter((s) => !(s.title === entry.title && s.artist === entry.artist))
+			].slice(0, 5)
+		);
+	}
+
+	function playSong(entry: SongEntry) {
+		if (loading) return;
+		error = null;
+		playlistName = `Song: ${entry.title}`;
+		const track: Track = {
+			index: 0,
+			title: entry.title,
+			artist: entry.artist,
+			duration_ms: 0,
+			videoId: entry.videoId,
+			status: entry.videoId ? 'ready' : 'pending'
+		};
+		tracks = [track];
+		current = 0;
+		playing = true;
+		if (!entry.videoId) void resolveTrack(0, `${entry.title} ${entry.artist}`);
+		recordSong(entry);
+	}
 
 	async function resolveTrack(index: number, q: string) {
 		tracks = tracks.map((t) => (t.index === index ? { ...t, status: 'searching' } : t));
@@ -186,6 +228,7 @@
 			current = 0;
 			playing = true;
 			query = '';
+			recordSong({ title: track.title, artist: track.artist, videoId: data.videoId, savedAt: Date.now() });
 		} catch (err) {
 			error = (err as Error).message;
 		} finally {
@@ -275,6 +318,7 @@
 			progress = 0;
 			duration = 0;
 			lastTime = -1;
+			if (audioEl && audioEl.paused) void audioEl.play().catch(() => {});
 		}
 	});
 
@@ -328,25 +372,40 @@
 	});
 </script>
 
-<main class="app" id="main" class:wide={tracks.length === 0 && history.length > 0}>
+<main class="app" id="main" class:wide={history.length > 0 || songs.length > 0}>
 	<a class="skip-link" href="#main"> Skip to content </a>
 
-	<div class="layout-home" class:active={tracks.length === 0 && history.length > 0}>
-		{#if tracks.length === 0 && history.length > 0}
+	<div class="layout-home" class:active={history.length > 0 || songs.length > 0}>
+		{#if history.length > 0 || songs.length > 0}
 			<aside class="home-side">
-				<div class="history">
-					<div class="section-label">Recently played</div>
-					<div class="history-scroll">
-						{#each history as h}
-							<button class="history-card" disabled={loading} onclick={() => loadHistoryEntry(h)}>
-								<span class="history-name">{h.name}</span>
-								<span class="history-meta">
-									{h.tracks.length} tracks · {fmt(h.tracks.reduce((sum, t) => sum + (t.duration_ms || 0), 0))}
-								</span>
-							</button>
-						{/each}
+				{#if history.length > 0}
+					<div class="side-group">
+						<div class="section-label">Vibes</div>
+						<div class="side-scroll">
+							{#each history as h}
+								<button class="history-card" disabled={loading} onclick={() => loadHistoryEntry(h)}>
+									<span class="history-name">{h.name}</span>
+									<span class="history-meta">
+										{h.tracks.length} tracks · {fmt(h.tracks.reduce((sum, t) => sum + (t.duration_ms || 0), 0))}
+									</span>								
+								</button>
+							{/each}
+						</div>
 					</div>
-				</div>
+				{/if}
+				{#if songs.length > 0}
+					<div class="side-group">
+						<div class="section-label">Songs</div>
+						<div class="side-scroll">
+							{#each songs as s}
+								<button class="history-card" onclick={() => playSong(s)}>
+									<span class="history-name">{s.title}</span>
+									<span class="history-meta">{s.artist || 'Unknown artist'}</span>
+								</button>
+							{/each}
+						</div>
+					</div>
+				{/if}
 			</aside>
 		{/if}
 

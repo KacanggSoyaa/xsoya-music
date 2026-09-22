@@ -25,6 +25,28 @@ export type HistoryEntry = {
 
 export type Preset = { name: string; tracks: string[] };
 
+export type SongEntry = {
+	title: string;
+	artist: string;
+	videoId?: string;
+	savedAt: number;
+};
+
+export const SONGS_KEY = 'xs_music_songs';
+
+export function loadSongs(): SongEntry[] {
+	try {
+		const raw = localStorage.getItem(SONGS_KEY);
+		if (raw) {
+			const parsed = JSON.parse(raw);
+			if (Array.isArray(parsed)) return (parsed as SongEntry[]).slice(0, 5);
+		}
+	} catch {
+		/* ignore */
+	}
+	return [];
+}
+
 export function fmt(ms: number): string {
 	if (!ms || ms <= 0) return '0:00';
 	const total = Math.floor(ms / 1000);
