@@ -25,7 +25,6 @@
 	let playlistName = $state<string | null>(null);
 	let tracks = $state<Track[]>([]);
 	let loading = $state(false);
-	let searching = $state(false);
 	let suggestLoading = $state(false);
 	let error = $state<string | null>(null);
 	let auth = $state<{ loggedIn: boolean; configured: boolean } | null>(null);
@@ -223,23 +222,6 @@
 		const [moved] = next.splice(from, 1);
 		next.splice(to, 0, moved);
 		queue = next;
-	}
-
-	async function searchAndQueue(q: string) {
-		const term = q.trim();
-		if (!term || searching) return;
-		searching = true;
-		error = null;
-		try {
-			const res = await fetch(`/api/search?q=${encodeURIComponent(term)}`);
-			const data = (await res.json()) as SearchResult & { error?: string };
-			if (!res.ok) throw new Error(data.error || 'search failed');
-			enqueueTrack({ title: data.title ?? term, artist: data.channel ?? '', videoId: data.videoId });
-		} catch (err) {
-			error = (err as Error).message;
-		} finally {
-			searching = false;
-		}
 	}
 
 	function persistHistory(list: HistoryEntry[]) {
@@ -718,19 +700,6 @@
 					Searching…
 				{:else}
 					Search
-				{/if}
-			</button>
-			<button
-				class="btn-ghost"
-				onclick={() => void searchAndQueue(query)}
-				disabled={searching || !query.trim()}
-				title="Add search result to queue"
-			>
-				{#if searching}
-					<span class="spinner"></span>
-					Adding…
-				{:else}
-					+ Queue
 				{/if}
 			</button>
 		</div>
