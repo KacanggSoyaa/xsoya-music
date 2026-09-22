@@ -41,6 +41,8 @@
 	let sessionSeconds = $state(0);
 	let queue = $state<Track[]>([]);
 	let queueSeq = 0;
+	let dragging = $state(-1);
+	let dragOver = $state(-1);
 
 	let audioEl: HTMLAudioElement;
 	let lastTime = -1;
@@ -211,11 +213,11 @@
 		queue = queue.filter((t) => t.qid !== qid);
 	}
 
-	function moveQueue(index: number, dir: number) {
-		const j = index + dir;
-		if (index < 0 || j < 0 || j >= queue.length) return;
+	function reorderQueue(from: number, to: number) {
+		if (from === to) return;
 		const next = [...queue];
-		[next[index], next[j]] = [next[j], next[index]];
+		const [moved] = next.splice(from, 1);
+		next.splice(to, 0, moved);
 		queue = next;
 	}
 
@@ -796,7 +798,34 @@
 				</button>
 			</div>
 			{#each queue as q, qi}
-				<div class={'queue-track' + (q.status === 'error' ? ' failed' : '')}>
+				<div
+					class={'queue-track' + (q.status === 'error' ? ' failed' : '') + (dragOver === qi ? ' drag-over' : '') + (dragging === qi ? ' dragging' : '')}
+					draggable="true"
+					role="listitem"
+					ondragstart={(e) => {
+						dragging = qi;
+						e.dataTransfer?.setData('text/plain', String(qi));
+					}}
+					ondragover={(e) => {
+						e.preventDefault();
+						dragOver = qi;
+					}}
+					ondragleave={() => {
+						if (dragOver === qi) dragOver = -1;
+					}}
+					ondrop={(e) => {
+						e.preventDefault();
+						const from = Number(e.dataTransfer?.getData('text/plain') ?? dragging);
+						if (from >= 0 && from !== qi) reorderQueue(from, qi);
+						dragging = -1;
+						dragOver = -1;
+					}}
+					ondragend={() => {
+						dragging = -1;
+						dragOver = -1;
+					}}
+				>
+					<span class="drag-handle" title="Drag to reorder">⠿</span>
 					<span class="index">{String(qi + 1).padStart(2, '0')}</span>
 					<div class="meta">
 						<div class="title">{q.title}</div>
@@ -805,22 +834,9 @@
 					{#if q.status === 'error'}
 						<span class="badge error-badge" title={q.error}>! unfound</span>
 					{/if}
-					<div class="queue-actions">
-						<button class="queue-move" onclick={() => moveQueue(qi, -1)} disabled={qi === 0} title="Move up">
-							↑
-						</button>
-						<button
-							class="queue-move"
-							onclick={() => moveQueue(qi, 1)}
-							disabled={qi === queue.length - 1}
-							title="Move down"
-						>
-							↓
-						</button>
-						<button class="queue-x" onclick={() => q.qid !== undefined && removeFromQueue(q.qid)} title="Remove from queue">
-							✕
-						</button>
-					</div>
+					<button class="queue-x" onclick={() => q.qid !== undefined && removeFromQueue(q.qid)} title="Remove from queue">
+						✕
+					</button>
 				</div>
 			{/each}
 		</section>
