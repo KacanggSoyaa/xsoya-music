@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
-from music import resolve_stream_url, search_best
+from music import resolve_stream_url, search_best, search_results
 
 app = FastAPI(title="xSoya Music service")
 
@@ -37,6 +37,16 @@ def search(q: str):
         raise HTTPException(status_code=400, detail="query is empty")
     try:
         return search_best(q)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"search failed: {exc}") from exc
+
+
+@app.get("/search/results")
+def search_many(q: str, count: int = 8):
+    if not q.strip():
+        raise HTTPException(status_code=400, detail="query is empty")
+    try:
+        return {"results": search_results(q, count)}
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"search failed: {exc}") from exc
 

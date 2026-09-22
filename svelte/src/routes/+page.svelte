@@ -19,10 +19,14 @@
 
 	let url = $state('');
 	let query = $state('');
+	let suggestions = $state<SearchResult[]>([]);
+	let suggestOpen = $state(false);
+	let suggestSel = $state(-1);
 	let playlistName = $state<string | null>(null);
 	let tracks = $state<Track[]>([]);
 	let loading = $state(false);
 	let searching = $state(false);
+	let suggestLoading = $state(false);
 	let error = $state<string | null>(null);
 	let auth = $state<{ loggedIn: boolean; configured: boolean } | null>(null);
 	let history = $state<HistoryEntry[]>([]);
@@ -221,24 +225,21 @@
 		queue = next;
 	}
 
-	function searchAndQueue(q: string) {
-		return (async () => {
-			const term = q.trim();
-			if (!term || searching) return;
-			searching = true;
-			error = null;
-			try {
-				const res = await fetch(`/api/search?q=${encodeURIComponent(term)}`);
-				const data = (await res.json()) as SearchResult & { error?: string };
-				if (!res.ok) throw new Error(data.error || 'search failed');
-				enqueueTrack({ title: data.title ?? term, artist: data.channel ?? '', videoId: data.videoId });
-				query = '';
-			} catch (err) {
-				error = (err as Error).message;
-			} finally {
-				searching = false;
-			}
-		})();
+	async function searchAndQueue(q: string) {
+		const term = q.trim();
+		if (!term || searching) return;
+		searching = true;
+		error = null;
+		try {
+			const res = await fetch(`/api/search?q=${encodeURIComponent(term)}`);
+			const data = (await res.json()) as SearchResult & { error?: string };
+			if (!res.ok) throw new Error(data.error || 'search failed');
+			enqueueTrack({ title: data.title ?? term, artist: data.channel ?? '', videoId: data.videoId });
+		} catch (err) {
+			error = (err as Error).message;
+		} finally {
+			searching = false;
+		}
 	}
 
 	function persistHistory(list: HistoryEntry[]) {
@@ -321,34 +322,60 @@
 		await applyTracks(entry.name, entry.tracks);
 	}
 
-	async function searchAndPlay(q: string) {
-		const term = q.trim();
-		if (!term || searching) return;
-		searching = true;
-		error = null;
+	async function fetchSuggestions(term: string): Promise<SearchResult[]> {
 		try {
-			const res = await fetch(`/api/search?q=${encodeURIComponent(term)}`);
-			const data = (await res.json()) as SearchResult & { error?: string };
-			if (!res.ok) throw new Error(data.error || 'search failed');
-			const track: Track = {
-				index: 0,
-				title: data.title ?? term,
-				artist: data.channel ?? '',
-				duration_ms: (data.duration ?? 0) * 1000,
-				videoId: data.videoId,
-				status: 'ready'
-			};
-			playlistName = `Search: ${term}`;
-			tracks = [track];
-			current = 0;
-			playing = true;
-			query = '';
-			recordSong({ title: track.title, artist: track.artist, videoId: data.videoId, savedAt: Date.now() });
+			const res = await fetch(`/api/search/results?q=${encodeURIComponent(term)}&count=5`);
+			if (res.ok) {
+				const data = (await res.json()) as { results?: SearchResult[]; error?: string };
+				return data.results ?? [];
+			}
+		} catch {
+			// fall through to single best match
+		}
+		const res = await fetch(`/api/search?q=${encodeURIComponent(term)}`);
+		const data = (await res.json()) as SearchResult & { error?: string };
+		if (!res.ok) throw new Error(data.error || 'search failed');
+		return [data];
+	}
+
+	async function suggestNow() {
+		const term = query.trim();
+		if (!term) return;
+		if (suggestTimer) clearTimeout(suggestTimer);
+		suggestLoading = true;
+		try {
+			suggestions = await fetchSuggestions(term);
+			suggestOpen = suggestions.length > 0;
+			suggestSel = -1;
 		} catch (err) {
+			suggestions = [];
+			suggestOpen = false;
 			error = (err as Error).message;
 		} finally {
-			searching = false;
+			suggestLoading = false;
 		}
+	}
+
+	async function playSearchResult(r: SearchResult) {
+		const track: Track = {
+			index: 0,
+			title: r.title,
+			artist: r.channel ?? '',
+			duration_ms: (r.duration ?? 0) * 1000,
+			videoId: r.videoId,
+			status: 'ready'
+		};
+		playlistName = `Search: ${r.title}`;
+		tracks = [track];
+		current = 0;
+		playing = true;
+		query = '';
+		recordSong({ title: r.title, artist: r.channel ?? '', videoId: r.videoId, savedAt: Date.now() });
+	}
+
+	function queueSearchResult(r: SearchResult) {
+		enqueueTrack({ title: r.title, artist: r.channel ?? '', videoId: r.videoId });
+		suggestOpen = false;
 	}
 
 	function playIndex(index: number) {
@@ -427,6 +454,35 @@
 			vibeTracks = '';
 		}
 	}
+
+	let suggestTimer: ReturnType<typeof setTimeout> | undefined;
+
+	$effect(() => {
+		const term = query.trim();
+		if (suggestTimer) clearTimeout(suggestTimer);
+		if (term.length < 2) {
+			suggestions = [];
+			suggestOpen = false;
+			suggestSel = -1;
+			return;
+		}
+		suggestTimer = setTimeout(() => {
+			suggestLoading = true;
+			void fetchSuggestions(term)
+				.then((res) => {
+					suggestions = res;
+					suggestOpen = res.length > 0;
+					suggestSel = -1;
+				})
+				.catch(() => {
+					suggestions = [];
+					suggestOpen = false;
+				})
+				.finally(() => {
+					suggestLoading = false;
+				});
+		}, 280);
+	});
 
 	$effect(() => {
 		if (videoId && currentTrack) {
@@ -588,6 +644,97 @@
 			</div>
 		</div>
 
+		<div class="search-row">
+			<div class="search-box">
+				<input
+					bind:value={query}
+					onkeydown={(e) => {
+						if (e.key === 'ArrowDown' && suggestions.length) {
+							e.preventDefault();
+							suggestSel = (suggestSel + 1) % suggestions.length;
+						} else if (e.key === 'ArrowUp' && suggestions.length) {
+							e.preventDefault();
+							suggestSel = (suggestSel - 1 + suggestions.length) % suggestions.length;
+						} else if (e.key === 'Enter') {
+							e.preventDefault();
+							if (suggestOpen && suggestSel >= 0 && suggestions[suggestSel]) {
+								playSearchResult(suggestions[suggestSel]);
+							} else {
+								void suggestNow();
+							}
+						} else if (e.key === 'Escape') {
+							suggestOpen = false;
+							suggestSel = -1;
+						}
+					}}
+					onblur={() => {
+						setTimeout(() => {
+							suggestOpen = false;
+							suggestSel = -1;
+						}, 150);
+					}}
+					placeholder="Search any song and play it instantly…"
+				/>
+				{#if suggestOpen && suggestions.length > 0}
+					<div class="suggestions" role="listbox">
+						{#each suggestions as r, i}
+							<button
+								class={'suggestion' + (suggestSel === i ? ' selected' : '')}
+								role="option"
+								aria-selected={suggestSel === i}
+								onmouseenter={() => (suggestSel = i)}
+								onmousedown={(e) => {
+									e.preventDefault();
+									playSearchResult(r);
+								}}
+							>
+								<span class="sug-title">{r.title}</span>
+								<span class="sug-meta">
+									{r.channel ?? 'Unknown artist'}
+									{#if r.duration}
+										· {fmt(r.duration * 1000)}
+									{/if}
+								</span>
+								<span class="sug-queue" title="Add to queue" role="button" tabindex="-1" onmousedown={(e) => { e.stopPropagation(); queueSearchResult(r); }}>+</span>
+							</button>
+						{/each}
+					</div>
+				{:else if suggestOpen && suggestLoading}
+					<div class="suggestions loading">
+						<div class="suggestion-loading">
+							<span class="spinner"></span>
+							<span>Searching…</span>
+						</div>
+					</div>
+				{/if}
+			</div>
+			<button
+				class="btn-primary"
+				onclick={() => void suggestNow()}
+				disabled={!query.trim() || suggestLoading}
+			>
+				{#if suggestLoading}
+					<span class="spinner"></span>
+					Searching…
+				{:else}
+					Search
+				{/if}
+			</button>
+			<button
+				class="btn-ghost"
+				onclick={() => void searchAndQueue(query)}
+				disabled={searching || !query.trim()}
+				title="Add search result to queue"
+			>
+				{#if searching}
+					<span class="spinner"></span>
+					Adding…
+				{:else}
+					+ Queue
+				{/if}
+			</button>
+		</div>
+
 		<div class="load-row">
 			<textarea
 				bind:value={url}
@@ -596,31 +743,6 @@
 			></textarea>
 			<button class="btn-primary" onclick={loadPlaylist} disabled={loading || !url.trim()}>
 				{loading ? 'Loading…' : 'Load'}
-			</button>
-		</div>
-
-		<div class="search-row">
-			<input
-				bind:value={query}
-				onkeydown={(e) => {
-					if (e.key === 'Enter') void searchAndPlay(query);
-				}}
-				placeholder="Search any song and play it instantly…"
-			/>
-			<button
-				class="btn-primary"
-				onclick={() => void searchAndPlay(query)}
-				disabled={searching || !query.trim()}
-			>
-				{searching ? 'Searching…' : 'Play'}
-			</button>
-			<button
-				class="btn-ghost"
-				onclick={() => void searchAndQueue(query)}
-				disabled={searching || !query.trim()}
-				title="Add search result to queue"
-			>
-				+ Queue
 			</button>
 		</div>
 
