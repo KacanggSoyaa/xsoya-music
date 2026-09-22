@@ -3,7 +3,8 @@
 Free music player that plays Spotify playlists by resolving each track to
 YouTube audio via `yt-dlp`. No Spotify Premium required for playback.
 
-- **web/** — Next.js (TypeScript) app: UI, Spotify import, OAuth login, proxies
+- **svelte/** — SvelteKit (Svelte 5, TypeScript) frontend: UI, Spotify import,
+  OAuth login, playback proxies
 - **server/** — Python FastAPI service: YouTube search, audio streaming, download
 
 > Only use this for content you have the right to access. Respect Spotify's and
@@ -27,7 +28,7 @@ python -m venv .venv
 ### 2. Web app
 
 ```powershell
-cd web
+cd svelte
 npm install
 ```
 
@@ -43,7 +44,7 @@ To enable login (and the official Web API path):
 2. In the app settings, add redirect URI: `http://127.0.0.1:3000/api/auth/callback`
    (Spotify rejects `localhost` and plain `http`; only loopback IPs like
    `127.0.0.1` are allowed over http.)
-3. Copy `web/.env.local.example` to `web/.env.local` and fill in:
+3. Copy `svelte/.env.local.example` to `svelte/.env.local` and fill in:
    - `SPOTIFY_CLIENT_ID`
    - `SPOTIFY_CLIENT_SECRET`
 
@@ -64,7 +65,7 @@ cd server
 
 ```powershell
 # terminal 2 — web app (http://127.0.0.1:3000)
-cd web
+cd svelte
 npm run dev
 ```
 
@@ -77,8 +78,12 @@ Open http://127.0.0.1:3000 (use 127.0.0.1, not localhost, so Spotify login works
   playlist is private.
 - **Pasted list** — paste one track per line (`Artist - Title`) and click Load.
   Works with no setup.
+- **Vibes** — instant preset playlists (Lo-fi Chill, Workout, Deep Focus).
+  Edit or add your own; they're saved in the browser.
+- **Search** — type any song and play it instantly.
 - **Playback** — click a track, or use prev/play/next. Tracks resolve to YouTube
-  in the background (two at a time).
+  in the background (two at a time). Space toggles play/pause, ←/→ seek ±10s,
+  Ctrl+←/→ jump tracks.
 - **Download** — the ⤓ button in the player saves the current track's audio.
 
 ## API

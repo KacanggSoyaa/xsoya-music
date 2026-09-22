@@ -3,10 +3,9 @@
 .env
 *.local
 
-# next.js
+# node
 node_modules/
-.next/
-out/
+build/
 
 # python
 .venv/
