@@ -51,6 +51,10 @@
 	let lastTime = -1;
 	let sessionRef = 0;
 
+	let loopMode = $state<'off' | 'all'>('off');
+	let shuffle = $state(false);
+	let shuffledIndices: number[] = [];
+
 	onMount(() => {
 		const params = new URLSearchParams(window.location.search);
 		const authError = params.get('authError');
@@ -266,6 +270,7 @@
 		playlistName = name;
 		current = -1;
 		playing = false;
+		shuffledIndices = [];
 		const built: Track[] = list.map((t, i) => ({
 			index: i,
 			title: t.title,
@@ -286,9 +291,10 @@
 			const res = await fetch(`/api/playlist?url=${encodeURIComponent(url)}`);
 			const data = await res.json();
 			if (!res.ok) throw new Error(data.error || 'load failed');
+			if (!data.tracks || !data.tracks.length) throw new Error('No tracks found');
 			await applyTracks(data.name, data.tracks);
 			
-			const vibeTracks = data.tracks.map(t => `${t.artist} - ${t.title}`.trim());
+			const vibeTracks = data.tracks.map((t: any) => `${t.artist} - ${t.title}`.trim());
 			saveVibes([...vibes, { name: data.name, tracks: vibeTracks }]);
 			url = '';
 		} catch (err) {
@@ -366,7 +372,7 @@
 
 	function playIndex(index: number) {
 		const track = tracks[index];
-		if (!track || track.status !== 'ready' || !track.videoId) return;
+		if (!track || !track.videoId) return;
 		if (index === current) {
 			if (!audioEl) return;
 			if (audioEl.paused) void audioEl.play();
@@ -377,20 +383,81 @@
 		playing = true;
 	}
 
+	function getNextIndex(): number | null {
+		if (tracks.length === 0) return null;
+		
+		if (shuffle) {
+			if (shuffledIndices.length === 0) {
+				shuffledIndices = Array.from({ length: tracks.length }, (_, i) => i)
+					.sort(() => Math.random() - 0.5);
+			}
+			const currentPos = shuffledIndices.indexOf(current);
+			const nextPos = (currentPos + 1) % shuffledIndices.length;
+			return shuffledIndices[nextPos];
+		}
+		
+		const next = current + 1;
+		if (next < tracks.length) return next;
+		
+		if (loopMode === 'all') return 0;
+		if (queue.length > 0) return -1;
+		return null;
+	}
+
+	function getPrevIndex(): number | null {
+		if (tracks.length === 0) return null;
+		
+		if (shuffle) {
+			if (shuffledIndices.length === 0) {
+				shuffledIndices = Array.from({ length: tracks.length }, (_, i) => i)
+					.sort(() => Math.random() - 0.5);
+			}
+			const currentPos = shuffledIndices.indexOf(current);
+			const prevPos = (currentPos - 1 + shuffledIndices.length) % shuffledIndices.length;
+			return shuffledIndices[prevPos];
+		}
+		
+		const prev = current - 1;
+		if (prev >= 0) return prev;
+		
+		if (loopMode === 'all') return tracks.length - 1;
+		return null;
+	}
+
 	function step(delta: number) {
-		const target = current + delta;
-		if (target >= 0 && target < tracks.length) {
-			playIndex(target);
-			return;
+		if (delta > 0) {
+			const nextIdx = getNextIndex();
+			if (nextIdx !== null) {
+				playIndex(nextIdx);
+				return;
+			}
+			if (queue.length > 0) {
+				playNextQueued();
+			}
+		} else {
+			const prevIdx = getPrevIndex();
+			if (prevIdx !== null) {
+				playIndex(prevIdx);
+			}
 		}
-		if (delta > 0 && queue.length > 0) {
-			playNextQueued();
-		}
+	}
+
+	function toggleLoop() {
+		loopMode = loopMode === 'off' ? 'all' : 'off';
+		if (loopMode !== 'off') shuffle = false;
+		shuffledIndices = [];
+	}
+
+	function toggleShuffle() {
+		shuffle = !shuffle;
+		if (shuffle) loopMode = 'off';
+		shuffledIndices = [];
 	}
 
 	const currentTrack = $derived(current >= 0 ? tracks[current] : undefined);
 	const videoId = $derived(currentTrack?.status === 'ready' ? currentTrack?.videoId : undefined);
 	const currentSource = $derived(videoId ? `/api/stream/${videoId}` : undefined);
+	
 	const totalDurationMs = $derived(tracks.reduce((sum, t) => sum + (t.duration_ms || 0), 0));
 
 	function saveVibes(list: Preset[]) {
@@ -474,13 +541,20 @@
 		}, 280);
 	});
 
-	$effect(() => {
+$effect(() => {
 		if (videoId && currentTrack) {
 			progress = 0;
 			duration = 0;
 			lastTime = -1;
-			if (audioEl && audioEl.paused) void audioEl.play().catch(() => {});
+			if (audioEl) {
+				void audioEl.load();
+				void audioEl.play().catch(() => {});
+			}
 		}
+	});
+	
+	$effect(() => {
+		console.log('currentSource changed:', currentSource, 'videoId:', videoId, 'current:', current);
 	});
 
 	$effect(() => {
@@ -497,6 +571,16 @@
 				case 'MediaPlayPause':
 					e.preventDefault();
 					toggle();
+					break;
+				case 's':
+				case 'S':
+					e.preventDefault();
+					toggleShuffle();
+					break;
+				case 'r':
+				case 'R':
+					e.preventDefault();
+					toggleLoop();
 					break;
 				case 'ArrowUp':
 				case 'MediaTrackNext':
@@ -573,6 +657,7 @@
 										</button>
 									</div>
 								</div>
+								<br>
 							{/each}
 						</div>
 					</div>
@@ -612,6 +697,7 @@
 										</button>
 									</div>
 								</div>
+								<br>
 							{/each}
 						</div>
 					</div>
@@ -947,10 +1033,18 @@
 		<audio
 			bind:this={audioEl}
 			src={currentSource}
-			autoplay
 			onplay={() => (playing = true)}
 			onpause={() => (playing = false)}
-			onended={() => (queue.length > 0 ? playNextQueued() : step(1))}
+			onended={() => {
+				if (loopMode === 'all' && videoId) {
+					audioEl.currentTime = 0;
+					audioEl.play();
+				} else if (queue.length > 0) {
+					playNextQueued();
+				} else {
+					step(1);
+				}
+			}}
 			ontimeupdate={(e) => {
 				const el = e.currentTarget;
 				progress = (el.currentTime / el.duration) * 100 || 0;
@@ -976,7 +1070,10 @@
 		></audio>
 		<div class="player-controls">
 			<div class={'disc'} class:spin={playing} class:idle={!currentTrack} title={currentTrack ? `${currentTrack.title} — ${currentTrack.artist}` : 'Nothing playing'}></div>
-			<button onclick={() => step(-1)} disabled={current <= 0} class="ctl" title="Previous (Ctrl+← / ↓)">
+			<button onclick={() => toggleShuffle()} class="ctl" class:active={shuffle} title="Shuffle (S)">
+				⇄
+			</button>
+			<button onclick={() => step(-1)} disabled={current < 0 && tracks.length === 0} class="ctl" title="Previous (Ctrl+← / ↓)">
 				⏮
 			</button>
 			<button onclick={() => playIndex(current)} disabled={!videoId} class="ctl play" title={playing ? 'Pause (Space)' : 'Play (Space)'}>
@@ -984,11 +1081,14 @@
 			</button>
 			<button
 				onclick={() => step(1)}
-				disabled={current < 0 || (current >= tracks.length - 1 && queue.length === 0)}
+				disabled={tracks.length === 0 && queue.length === 0}
 				class="ctl"
 				title="Next (Ctrl+→ / ↑)"
 			>
 				⏭
+			</button>
+			<button onclick={() => toggleLoop()} class="ctl" class:active={loopMode === 'all'} title={`Repeat (R)`}>
+				⟳
 			</button>
 			{#if videoId && currentTrack}
 				<a
@@ -1022,7 +1122,7 @@
 			/>
 			<span>{fmt(duration * 1000)}</span>
 		</div>
-		<p class="keys-hint">Space: play/pause · ←/→: seek ±10s · Ctrl+←/→ : prev/next track</p>
+		<p class="keys-hint">Space: play/pause · S: shuffle · R: repeat · ←/→: seek ±10s · Ctrl+←/→ : prev/next track</p>
 	</footer>
 
 	{#if confirmDel}
