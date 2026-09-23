@@ -7,15 +7,11 @@
 		type HistoryEntry,
 		type Preset,
 		type SongEntry,
-		fmt,
-		fmtTotal,
-		parseLine,
-		statusGlyph,
-		DEFAULT_VIBES,
-		loadVibes,
-		SONGS_KEY,
-		loadSongs
-	} from '$lib/player.js';
+		statusGlyph
+	} from '$lib/types.js';
+	import { fmt, fmtTotal, parseLine } from '$lib/utils.js';
+	import { DEFAULT_VIBES, loadVibes } from '$lib/vibes.js';
+	import { SONGS_KEY, loadSongs } from '$lib/storage.js';
 
 	let url = $state('');
 	let query = $state('');

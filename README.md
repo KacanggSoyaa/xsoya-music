@@ -3,9 +3,10 @@
 Free music player that plays Spotify playlists by resolving each track to
 YouTube audio via `yt-dlp`. No Spotify Premium required for playback.
 
-- **svelte/** — SvelteKit (Svelte 5, TypeScript) frontend: UI, Spotify import,
+- **src/** — SvelteKit (Svelte 5, TypeScript) frontend: UI, Spotify import,
   OAuth login, playback proxies
-- **server/** — Python FastAPI service: YouTube search, audio streaming, download
+- **server files** (`main.py`, `music.py`, `requirements.txt`) — Python
+  FastAPI service: YouTube search, audio streaming, download
 
 > Only use this for content you have the right to access. Respect Spotify's and
 > YouTube's terms of service.
@@ -14,21 +15,24 @@ YouTube audio via `yt-dlp`. No Spotify Premium required for playback.
 
 - Node.js 18+
 - Python 3.10+
+- `yt-dlp` is used automatically by the Python service to resolve YouTube audio.
 
-## Setup
+## First-time setup (once)
+
+Run everything from the project root (`C:\Users\Danis\Desktop\xSoyaMusic`).
 
 ### 1. Python music service
 
 ```powershell
-cd server
 python -m venv .venv
 .\.venv\Scripts\python -m pip install -r requirements.txt
 ```
 
+> On macOS/Linux use `. .venv/bin/python` instead of `.\.venv\Scripts\python`.
+
 ### 2. Web app
 
 ```powershell
-cd svelte
 npm install
 ```
 
@@ -44,7 +48,7 @@ To enable login (and the official Web API path):
 2. In the app settings, add redirect URI: `http://127.0.0.1:3000/api/auth/callback`
    (Spotify rejects `localhost` and plain `http`; only loopback IPs like
    `127.0.0.1` are allowed over http.)
-3. Copy `svelte/.env.local.example` to `svelte/.env.local` and fill in:
+3. Copy `.env.local.example` to `.env.local` and fill in:
    - `SPOTIFY_CLIENT_ID`
    - `SPOTIFY_CLIENT_SECRET`
 
@@ -55,21 +59,34 @@ To enable login (and the official Web API path):
 
 ## Run
 
-Two terminals:
+You need **two terminals**, both in the project root.
+
+### Terminal 1 — music service (port 8000)
 
 ```powershell
-# terminal 1 — music service (http://127.0.0.1:8000)
-cd server
 .\.venv\Scripts\python -m uvicorn main:app --port 8000
 ```
 
+The service is ready when you see `Uvicorn running on http://127.0.0.1:8000`.
+Optional check: open `http://127.0.0.1:8000/health` — it should return `{"ok": true}`.
+
+### Terminal 2 — web app (port 3000)
+
 ```powershell
-# terminal 2 — web app (http://127.0.0.1:3000)
-cd svelte
 npm run dev
 ```
 
-Open http://127.0.0.1:3000 (use 127.0.0.1, not localhost, so Spotify login works).
+### Open the app
+
+Go to **http://127.0.0.1:3000** (use `127.0.0.1`, not `localhost`, so Spotify
+login works).
+
+### Stop
+
+Press `Ctrl+C` in each terminal to stop the two servers.
+
+> If `yt-dlp` was installed before but YouTube changed something, update it with
+> `.\.venv\Scripts\python -m pip install -U yt-dlp`.
 
 ## Usage
 
@@ -83,7 +100,7 @@ Open http://127.0.0.1:3000 (use 127.0.0.1, not localhost, so Spotify login works
 - **Search** — type any song and play it instantly.
 - **Playback** — click a track, or use prev/play/next. Tracks resolve to YouTube
   in the background (two at a time). Space toggles play/pause, ←/→ seek ±10s,
-  Ctrl+←/→ jump tracks.
+  Ctrl+←/→ jump tracks. S/R cycles repeat/shuffle.
 - **Download** — the ⤓ button in the player saves the current track's audio.
 
 ## API
