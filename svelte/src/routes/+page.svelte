@@ -287,6 +287,10 @@
 			const data = await res.json();
 			if (!res.ok) throw new Error(data.error || 'load failed');
 			await applyTracks(data.name, data.tracks);
+			
+			const vibeTracks = data.tracks.map(t => `${t.artist} - ${t.title}`.trim());
+			saveVibes([...vibes, { name: data.name, tracks: vibeTracks }]);
+			url = '';
 		} catch (err) {
 			error = (err as Error).message;
 		} finally {
