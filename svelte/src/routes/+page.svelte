@@ -51,8 +51,7 @@
 	let lastTime = -1;
 	let sessionRef = 0;
 
-	let loopMode = $state<'off' | 'all'>('off');
-	let shuffle = $state(false);
+	let playbackMode = $state<'off' | 'loop' | 'shuffle'>('off');
 	let shuffledIndices: number[] = [];
 
 	onMount(() => {
@@ -386,7 +385,7 @@
 	function getNextIndex(): number | null {
 		if (tracks.length === 0) return null;
 		
-		if (shuffle) {
+		if (playbackMode === 'shuffle') {
 			if (shuffledIndices.length === 0) {
 				shuffledIndices = Array.from({ length: tracks.length }, (_, i) => i)
 					.sort(() => Math.random() - 0.5);
@@ -399,7 +398,7 @@
 		const next = current + 1;
 		if (next < tracks.length) return next;
 		
-		if (loopMode === 'all') return 0;
+		if (playbackMode === 'loop') return 0;
 		if (queue.length > 0) return -1;
 		return null;
 	}
@@ -407,7 +406,7 @@
 	function getPrevIndex(): number | null {
 		if (tracks.length === 0) return null;
 		
-		if (shuffle) {
+		if (playbackMode === 'shuffle') {
 			if (shuffledIndices.length === 0) {
 				shuffledIndices = Array.from({ length: tracks.length }, (_, i) => i)
 					.sort(() => Math.random() - 0.5);
@@ -420,7 +419,7 @@
 		const prev = current - 1;
 		if (prev >= 0) return prev;
 		
-		if (loopMode === 'all') return tracks.length - 1;
+		if (playbackMode === 'loop') return tracks.length - 1;
 		return null;
 	}
 
@@ -442,15 +441,14 @@
 		}
 	}
 
-	function toggleLoop() {
-		loopMode = loopMode === 'off' ? 'all' : 'off';
-		if (loopMode !== 'off') shuffle = false;
-		shuffledIndices = [];
-	}
-
-	function toggleShuffle() {
-		shuffle = !shuffle;
-		if (shuffle) loopMode = 'off';
+	function togglePlaybackMode() {
+		if (playbackMode === 'off') {
+			playbackMode = 'loop';
+		} else if (playbackMode === 'loop') {
+			playbackMode = 'shuffle';
+		} else {
+			playbackMode = 'off';
+		}
 		shuffledIndices = [];
 	}
 
@@ -574,13 +572,10 @@ $effect(() => {
 					break;
 				case 's':
 				case 'S':
-					e.preventDefault();
-					toggleShuffle();
-					break;
 				case 'r':
 				case 'R':
 					e.preventDefault();
-					toggleLoop();
+					togglePlaybackMode();
 					break;
 				case 'ArrowUp':
 				case 'MediaTrackNext':
@@ -1036,7 +1031,7 @@ $effect(() => {
 			onplay={() => (playing = true)}
 			onpause={() => (playing = false)}
 			onended={() => {
-				if (loopMode === 'all' && videoId) {
+				if (playbackMode === 'loop' && videoId) {
 					audioEl.currentTime = 0;
 					audioEl.play();
 				} else if (queue.length > 0) {
@@ -1070,8 +1065,8 @@ $effect(() => {
 		></audio>
 		<div class="player-controls">
 			<div class={'disc'} class:spin={playing} class:idle={!currentTrack} title={currentTrack ? `${currentTrack.title} — ${currentTrack.artist}` : 'Nothing playing'}></div>
-			<button onclick={() => toggleShuffle()} class="ctl" class:active={shuffle} title="Shuffle (S)">
-				⇄
+			<button onclick={() => togglePlaybackMode()} class="ctl" class:active={playbackMode !== 'off'} title={`Repeat/Shuffle (S/R) — ${playbackMode === 'off' ? 'Off' : playbackMode === 'loop' ? 'Loop' : 'Shuffle'}`}>
+				{playbackMode === 'off' ? '⟳' : playbackMode === 'loop' ? '⟳' : '⇄'}
 			</button>
 			<button onclick={() => step(-1)} disabled={current < 0 && tracks.length === 0} class="ctl" title="Previous (Ctrl+← / ↓)">
 				⏮
@@ -1086,9 +1081,6 @@ $effect(() => {
 				title="Next (Ctrl+→ / ↑)"
 			>
 				⏭
-			</button>
-			<button onclick={() => toggleLoop()} class="ctl" class:active={loopMode === 'all'} title={`Repeat (R)`}>
-				⟳
 			</button>
 			{#if videoId && currentTrack}
 				<a
@@ -1122,7 +1114,7 @@ $effect(() => {
 			/>
 			<span>{fmt(duration * 1000)}</span>
 		</div>
-		<p class="keys-hint">Space: play/pause · S: shuffle · R: repeat · ←/→: seek ±10s · Ctrl+←/→ : prev/next track</p>
+		<p class="keys-hint">Space: play/pause · S/R: cycle repeat/shuffle · ←/→: seek ±10s · Ctrl+←/→ : prev/next track</p>
 	</footer>
 
 	{#if confirmDel}
