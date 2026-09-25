@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: xsoya-music
+    runtime: docker
+    plan: free
+    branch: develop
+    dockerfilePath: ./Dockerfile.render
+    dockerContext: .
+    healthCheckPath: /
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: MUSIC_SERVER
+        value: http://127.0.0.1:8000
+      - key: ORIGIN
+        value: https://music.kacanggsoyaa.ovh
+      - key: SPOTIFY_REDIRECT_URI
+        value: https://music.kacanggsoyaa.ovh/api/auth/callback
+      - key: SPOTIFY_CLIENT_ID
+        sync: false
+      - key: SPOTIFY_CLIENT_SECRET
+        sync: false
+      - key: PROTOCOL_HEADER
+        value: x-forwarded-proto
+      - key: HOST_HEADER
+        value: x-forwarded-host
+      - key: XFF_DEPTH
+        value: "1"
