@@ -3,10 +3,13 @@ services:
     name: xsoya-music
     runtime: docker
     plan: free
+    region: singapore
     branch: develop
     dockerfilePath: ./Dockerfile.render
     dockerContext: .
-    healthCheckPath: /
+    healthCheckPath: /api/health
+    domains:
+      - music.kacanggsoyaa.ovh
     envVars:
       - key: HOST
         value: 0.0.0.0

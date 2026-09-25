@@ -1,4 +1,4 @@
-fastapi
-uvicorn[standard]
-requests
-yt-dlp
+fastapi==0.141.1
+uvicorn[standard]==0.53.0
+requests==2.34.2
+yt-dlp==2026.08.19
